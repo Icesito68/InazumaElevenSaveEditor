@@ -726,36 +726,196 @@ namespace InazumaElevenSaveEditor
             TabControl4_SelectedIndexChanged(sender, e);
         }
 
-        private void RecruitToolStripMenuItem_Click(object sender, EventArgs e)
+    private void RecruitToolStripMenuItem_Click(object sender, EventArgs e)
+    {
+        if (Save == null) return;
+    
+        // Creamos un formulario para la selección multiple
+        Form recruitForm = new Form
         {
-            if (Save == null) return;
-
-            if (Save.Game.Reserve.Count > Save.Game.MaximumPlayer)
+            Text = "Recruit Players",
+            Width = 400,
+            Height = 540,
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            MaximizeBox = false,
+            MinimizeBox = false
+        };
+    
+        Label label = new Label
+        {
+            Text = "Select the players you want to recruit:",
+            Location = new Point(10, 10),
+            AutoSize = true
+        };
+    
+        // Buscador
+        Label searchLabel = new Label
+        {
+            Text = "Search:",
+            Location = new Point(10, 40),
+            AutoSize = true
+        };
+    
+        TextBox searchBox = new TextBox
+        {
+            Location = new Point(70, 37),
+            Width = 300
+        };
+    
+        CheckedListBox checkedListBox = new CheckedListBox
+        {
+            Location = new Point(10, 70),
+            Width = 360,
+            Height = 320,
+            CheckOnClick = true
+        };
+    
+        List<Player> allPlayers = new List<Player>();
+        foreach (Player player in nameBox.Items)
+        {
+            if (player != null)
             {
-                MessageBox.Show("Maximum player reached");
-                return;
-            }
-
-            ComboBox customNameBox = nameBox;
-
-            MessageComboBox inviteWindow = new MessageComboBox("Invite Player", "Select the player you want to invite", "Invite", customNameBox);
-            DialogResult dialogResult = inviteWindow.ShowDialog();
-
-            if (dialogResult == DialogResult.Yes && inviteWindow.nameBox.SelectedIndex != -1)
-            {
-                Save.Game.RecruitPlayer(inviteWindow.nameBox.SelectedItem as Player, true);
-
-                CreatePage(Convert.ToInt32(Math.Ceiling((double)Save.Game.Reserve.Count / 16.0)));
-                pageComboBox.SelectedIndex = pageComboBox.Items.Count - 1;
-
-                Player player = Save.Game.Reserve[Save.Game.Reserve.Count - 1];
-                PrintPlayer(player);
-
-                SelectedPlayers[tabControl4.SelectedIndex] = Save.Game.Reserve.Count - 1;
-
-                MessageBox.Show(inviteWindow.nameBox.Text + " has joined you");
+                allPlayers.Add(player);
+                checkedListBox.Items.Add(player);
             }
         }
+    
+        // Funcionamiento del Buscador
+        searchBox.TextChanged += (s, ev) =>
+        {
+            string searchText = searchBox.Text.ToLower();
+            checkedListBox.Items.Clear();
+    
+            foreach (Player player in allPlayers)
+            {
+                if (player.Name.ToLower().Contains(searchText))
+                {
+                    checkedListBox.Items.Add(player);
+                }
+            }
+        };
+    
+        Button btnDeselectAll = new Button
+        {
+            Text = "Deselect All",
+            Location = new Point(100, 400),
+            Width = 80
+        };
+        btnDeselectAll.Click += (s, ev) =>
+        {
+            for (int i = 0; i < checkedListBox.Items.Count; i++)
+            {
+                checkedListBox.SetItemChecked(i, false);
+            }
+        };
+    
+        Button btnRecruit = new Button
+        {
+            Text = "Recruit",
+            Location = new Point(210, 400),
+            Width = 80,
+            DialogResult = DialogResult.Yes
+        };
+    
+        Button btnCancel = new Button
+        {
+            Text = "Cancel",
+            Location = new Point(290, 400),
+            Width = 80,
+            DialogResult = DialogResult.Cancel
+        };
+    
+        // Añadir contador de seleccionados
+        Label countLabel = new Label
+        {
+            Text = "Selected: 0",
+            Location = new Point(10, 430),
+            AutoSize = true
+        };
+    
+        checkedListBox.ItemCheck += (s, ev) =>
+        {
+            recruitForm.BeginInvoke((MethodInvoker)delegate
+            {
+                countLabel.Text = $"Selected: {checkedListBox.CheckedItems.Count}";
+            });
+        };
+    
+        recruitForm.Controls.Add(label);
+        recruitForm.Controls.Add(searchLabel);
+        recruitForm.Controls.Add(searchBox);
+        recruitForm.Controls.Add(checkedListBox);
+        recruitForm.Controls.Add(btnDeselectAll);
+        recruitForm.Controls.Add(btnRecruit);
+        recruitForm.Controls.Add(btnCancel);
+        recruitForm.Controls.Add(countLabel);
+    
+        recruitForm.AcceptButton = btnRecruit;
+        recruitForm.CancelButton = btnCancel;
+    
+        DialogResult dialogResult = recruitForm.ShowDialog();
+    
+        if (dialogResult == DialogResult.Yes && checkedListBox.CheckedItems.Count > 0)
+        {
+            // Verificamos si hay espacio suficiente
+            int neededSpace = checkedListBox.CheckedItems.Count;
+            int availableSpace = Save.Game.MaximumPlayer - Save.Game.Reserve.Count;
+    
+            if (neededSpace > availableSpace)
+            {
+                MessageBox.Show($"Not enough space. You can recruit {availableSpace} player(s), but you selected {neededSpace}.",
+                    "Maximum Players Reached",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+    
+            List<Player> playersToRecruit = new List<Player>();
+            
+            // Recopilar los jugadores seleccionados
+            foreach (object item in checkedListBox.CheckedItems)
+            {
+                playersToRecruit.Add(item as Player);
+            }
+    
+            // Confirmar la acción
+            DialogResult confirmResult = MessageBox.Show(
+                $"Are you sure you want to recruit {playersToRecruit.Count} player(s)?",
+                "Confirm Recruitment",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question
+            );
+    
+            if (confirmResult != DialogResult.Yes) return;
+    
+            string recruitedNames = "";
+    
+            // Reclutar jugadores
+            foreach (Player recruitPlayer in playersToRecruit)
+            {
+                Save.Game.RecruitPlayer(recruitPlayer, true);
+                recruitedNames += recruitPlayer.Name + ", ";
+            }
+    
+            // Actualizar la interfaz
+            CreatePage(Convert.ToInt32(Math.Ceiling((double)Save.Game.Reserve.Count / 16.0)));
+            pageComboBox.SelectedIndex = pageComboBox.Items.Count - 1;
+    
+            // Si hay al menos un jugador reclutado, mostrar el último
+            if (playersToRecruit.Count > 0)
+            {
+                Player lastPlayer = Save.Game.Reserve[Save.Game.Reserve.Count - 1];
+                PrintPlayer(lastPlayer);
+                SelectedPlayers[tabControl4.SelectedIndex] = Save.Game.Reserve.Count - 1;
+            }
+    
+            // Remover la última coma y espacio
+            recruitedNames = recruitedNames.TrimEnd(',', ' ');
+    
+            MessageBox.Show($"Recruited players: {recruitedNames}");
+        }
+    }
 
         private void DismissToolStripMenuItem_Click(object sender, EventArgs e)
         {
