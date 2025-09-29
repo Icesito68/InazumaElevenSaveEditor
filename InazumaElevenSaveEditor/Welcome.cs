@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using System.Data;
@@ -761,59 +761,166 @@ namespace InazumaElevenSaveEditor
         {
             if (Save == null) return;
 
-            ComboBox customNameBox = new ComboBox();
-
-            customNameBox.Items.AddRange(Save.Game.Reserve.ToArray());
-            customNameBox.Sorted = false;
-
-            MessageComboBox inviteWindow = new MessageComboBox("Dismiss Player", "Select the player you want to dismiss", "Dismiss", customNameBox);
-            DialogResult dialogResult = inviteWindow.ShowDialog();
-
-            if (dialogResult == DialogResult.Yes && inviteWindow.nameBox.SelectedIndex != -1)
+            // Formulario con selección multiple
+            Form dismissForm = new Form
             {
-                Player removedPlayer = inviteWindow.nameBox.SelectedItem as Player;
+                Text = "Dismiss Players",
+                Width = 400,
+                Height = 500,
+                StartPosition = FormStartPosition.CenterParent,
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                MaximizeBox = false,
+                MinimizeBox = false
+            };
 
-                // Remove Mixi Max Aura Linked
-                foreach (Player player in Save.Game.Reserve)
+            Label label = new Label
+            {
+                Text = "Select the players you want to dismiss:",
+                Location = new Point(10, 10),
+                AutoSize = true
+            };
+
+            CheckedListBox checkedListBox = new CheckedListBox
+            {
+                Location = new Point(10, 40),
+                Width = 360,
+                Height = 350,
+                CheckOnClick = true
+            };
+
+            // Llenar el CheckedListBox con los jugadores
+            foreach (Player player in Save.Game.Reserve)
+            {
+                checkedListBox.Items.Add(player);
+            }
+
+            Button btnSelectAll = new Button
+            {
+                Text = "Select All",
+                Location = new Point(10, 400),
+                Width = 80
+            };
+            btnSelectAll.Click += (s, ev) =>
+            {
+                for (int i = 0; i < checkedListBox.Items.Count; i++)
                 {
-                    if (player.MixiMax != null && player.MixiMax.AuraPlayer == removedPlayer)
-                    {
-                        player.MixiMax = null;
-                    }
+                    checkedListBox.SetItemChecked(i, true);
+                }
+            };
+
+            Button btnDeselectAll = new Button
+            {
+                Text = "Deselect All",
+                Location = new Point(100, 400),
+                Width = 80
+            };
+            btnDeselectAll.Click += (s, ev) =>
+            {
+                for (int i = 0; i < checkedListBox.Items.Count; i++)
+                {
+                    checkedListBox.SetItemChecked(i, false);
+                }
+            };
+
+            Button btnDismiss = new Button
+            {
+                Text = "Dismiss",
+                Location = new Point(210, 400),
+                Width = 80,
+                DialogResult = DialogResult.Yes
+            };
+
+            Button btnCancel = new Button
+            {
+                Text = "Cancel",
+                Location = new Point(290, 400),
+                Width = 80,
+                DialogResult = DialogResult.Cancel
+            };
+
+            dismissForm.Controls.Add(label);
+            dismissForm.Controls.Add(checkedListBox);
+            dismissForm.Controls.Add(btnSelectAll);
+            dismissForm.Controls.Add(btnDeselectAll);
+            dismissForm.Controls.Add(btnDismiss);
+            dismissForm.Controls.Add(btnCancel);
+
+            dismissForm.AcceptButton = btnDismiss;
+            dismissForm.CancelButton = btnCancel;
+
+            DialogResult dialogResult = dismissForm.ShowDialog();
+
+            if (dialogResult == DialogResult.Yes && checkedListBox.CheckedItems.Count > 0)
+            {
+                List<Player> playersToRemove = new List<Player>();
+
+                // Recopilar los jugadores seleccionados
+                foreach (object item in checkedListBox.CheckedItems)
+                {
+                    playersToRemove.Add(item as Player);
                 }
 
-                // Remove Tabpages Which contains The PLayer Data
-                int selectedIndex = Save.Game.Reserve.IndexOf(removedPlayer);
-                int selectedPlayersLength = SelectedPlayers.Count;
-                for (int i = 0; i < selectedPlayersLength; i++)
+                // Confirmar la acción
+                DialogResult confirmResult = MessageBox.Show(
+                    $"Are you sure you want to dismiss {playersToRemove.Count} player(s)?",
+                    "Confirm Dismissal",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning
+                );
+
+                if (confirmResult != DialogResult.Yes) return;
+
+                string dismissedNames = "";
+
+                foreach (Player removedPlayer in playersToRemove)
                 {
-                    int index = SelectedPlayers.IndexOf(selectedIndex);
-                    if (index != -1 && SelectedPlayers[index] == selectedIndex)
+                    // Eliminamos las auras ligadas
+                    foreach (Player player in Save.Game.Reserve)
                     {
-                        if (SelectedPlayers.Count == 1)
+                        if (player.MixiMax != null && player.MixiMax.AuraPlayer == removedPlayer)
                         {
-                            SelectedPlayers[0] = -1;
-                            tabControl1.Enabled = false;
-                            tabControl4.TabPages[tabControl4.SelectedIndex].Text = "Player";
-                        }
-                        else
-                        {
-                            tabControl4.SelectedIndex = index;
-                            RemoveToolStripMenuItem_Click(tabControl4, EventArgs.Empty);
+                            player.MixiMax = null;
                         }
                     }
+
+                    int selectedIndex = Save.Game.Reserve.IndexOf(removedPlayer);
+                    int selectedPlayersLength = SelectedPlayers.Count;
+                    for (int i = 0; i < selectedPlayersLength; i++)
+                    {
+                        int index = SelectedPlayers.IndexOf(selectedIndex);
+                        if (index != -1 && SelectedPlayers[index] == selectedIndex)
+                        {
+                            if (SelectedPlayers.Count == 1)
+                            {
+                                SelectedPlayers[0] = -1;
+                                tabControl1.Enabled = false;
+                                tabControl4.TabPages[tabControl4.SelectedIndex].Text = "Player";
+                            }
+                            else
+                            {
+                                tabControl4.SelectedIndex = index;
+                                RemoveToolStripMenuItem_Click(tabControl4, EventArgs.Empty);
+                            }
+                        }
+                    }
+
+                    // Agregamos el jugador para eliminarlo
+                    dismissedNames += removedPlayer.Name + ", ";
+
+                    // Lo eliminamos del save
+                    Save.Game.Reserve.Remove(removedPlayer);
                 }
 
-                // Remove The Player From The Save
-                Save.Game.Reserve.Remove(removedPlayer);
-
-                // Reset Pages
+                // Reiniciamos las páginas
                 CreatePage(Convert.ToInt32(Math.Ceiling((double)Save.Game.Reserve.Count / 16.0)));
                 pageComboBox.SelectedIndex = 0;
                 SelectedPlayers[tabControl4.SelectedIndex] = -1;
                 tabControl1.Enabled = false;
 
-                MessageBox.Show(inviteWindow.nameBox.Text + " left the team");
+                // Removemos la última coma y espacio
+                dismissedNames = dismissedNames.TrimEnd(',', ' ');
+
+                MessageBox.Show($"Dismissed players: {dismissedNames}");
             }
         }
 
